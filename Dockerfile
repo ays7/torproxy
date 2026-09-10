@@ -1,66 +1,46 @@
-FROM alpine
-MAINTAINER David Personette <dperson@gmail.com>
+# syntax=docker/dockerfile:1
+FROM alpine:3.21
 
-# Install tor and privoxy
-RUN apk --no-cache --no-progress upgrade && \
-    apk --no-cache --no-progress add bash curl privoxy shadow tini tor tzdata&&\
-    file='/etc/privoxy/config' && \
-    sed -i 's|^\(accept-intercepted-requests\) .*|\1 1|' $file && \
-    sed -i '/^listen/s|127\.0\.0\.1||' $file && \
-    sed -i '/^listen.*::1/s|^|#|' $file && \
-    sed -i 's|^\(logfile\)|#\1|' $file && \
-    sed -i 's|^#\(log-messages\)|\1|' $file && \
-    sed -i 's|^#\(log-highlight-messages\)|\1|' $file && \
-    sed -i '/forward *localhost\//a forward-socks5t / 127.0.0.1:9050 .' $file&&\
-    sed -i '/^forward-socks5t \//a forward 172.16.*.*/ .' $file && \
-    sed -i '/^forward 172\.16\.\*\.\*\//a forward 172.17.*.*/ .' $file && \
-    sed -i '/^forward 172\.17\.\*\.\*\//a forward 172.18.*.*/ .' $file && \
-    sed -i '/^forward 172\.18\.\*\.\*\//a forward 172.19.*.*/ .' $file && \
-    sed -i '/^forward 172\.19\.\*\.\*\//a forward 172.20.*.*/ .' $file && \
-    sed -i '/^forward 172\.20\.\*\.\*\//a forward 172.21.*.*/ .' $file && \
-    sed -i '/^forward 172\.21\.\*\.\*\//a forward 172.22.*.*/ .' $file && \
-    sed -i '/^forward 172\.22\.\*\.\*\//a forward 172.23.*.*/ .' $file && \
-    sed -i '/^forward 172\.23\.\*\.\*\//a forward 172.24.*.*/ .' $file && \
-    sed -i '/^forward 172\.24\.\*\.\*\//a forward 172.25.*.*/ .' $file && \
-    sed -i '/^forward 172\.25\.\*\.\*\//a forward 172.26.*.*/ .' $file && \
-    sed -i '/^forward 172\.26\.\*\.\*\//a forward 172.27.*.*/ .' $file && \
-    sed -i '/^forward 172\.27\.\*\.\*\//a forward 172.28.*.*/ .' $file && \
-    sed -i '/^forward 172\.28\.\*\.\*\//a forward 172.29.*.*/ .' $file && \
-    sed -i '/^forward 172\.29\.\*\.\*\//a forward 172.30.*.*/ .' $file && \
-    sed -i '/^forward 172\.30\.\*\.\*\//a forward 172.31.*.*/ .' $file && \
-    sed -i '/^forward 172\.31\.\*\.\*\//a forward 10.*.*.*/ .' $file && \
-    sed -i '/^forward 10\.\*\.\*\.\*\//a forward 192.168.*.*/ .' $file && \
-    sed -i '/^forward 192\.168\.\*\.\*\//a forward 127.*.*.*/ .' $file && \
-    sed -i '/^forward 127\.\*\.\*\.\*\//a forward localhost/ .' $file && \
-    echo 'AutomapHostsOnResolve 1' >>/etc/tor/torrc && \
-    echo 'ControlPort 9051' >>/etc/tor/torrc && \
-    echo 'ControlSocket /etc/tor/run/control' >>/etc/tor/torrc && \
-    echo 'ControlSocketsGroupWritable 1' >>/etc/tor/torrc && \
-    echo 'CookieAuthentication 1' >>/etc/tor/torrc && \
-    echo 'CookieAuthFile /etc/tor/run/control.authcookie' >>/etc/tor/torrc && \
-    echo 'CookieAuthFileGroupReadable 1' >>/etc/tor/torrc && \
-    echo 'DNSPort 5353' >>/etc/tor/torrc && \
-    echo 'DataDirectory /var/lib/tor' >>/etc/tor/torrc && \
-    echo 'ExitPolicy reject *:*' >>/etc/tor/torrc && \
-    echo 'Log notice stderr' >>/etc/tor/torrc && \
-    echo 'RunAsDaemon 0' >>/etc/tor/torrc && \
-    echo 'SocksPort 0.0.0.0:9050 IsolateDestAddr' >>/etc/tor/torrc && \
-    echo 'TransPort 0.0.0.0:9040' >>/etc/tor/torrc && \
-    echo 'User tor' >>/etc/tor/torrc && \
-    echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >>/etc/tor/torrc && \
-    mkdir -p /etc/tor/run && \
-    chown -Rh tor. /var/lib/tor /etc/tor/run && \
+LABEL maintainer="ays7" \
+      org.opencontainers.image.title="torproxy" \
+      org.opencontainers.image.description="Tor and Privoxy SOCKS/HTTP proxy container" \
+      org.opencontainers.image.source="https://github.com/ays7/torproxy"
+
+# Install runtime packages and initialize configuration directories
+RUN apk --no-cache upgrade && \
+    apk --no-cache add \
+        bash \
+        curl \
+        netcat-openbsd \
+        privoxy \
+        shadow \
+        tini \
+        tor \
+        tzdata && \
+    for f in /etc/privoxy/*.new; do [ -f "$f" ] && cp "$f" "${f%.new}"; done && \
+    mkdir -p /etc/tor/run /var/lib/tor /var/log/tor /var/log/privoxy && \
+    chown -Rh tor:tor /var/lib/tor /etc/tor /var/log/tor && \
+    chmod 0700 /var/lib/tor && \
     chmod 0750 /etc/tor/run && \
-    rm -rf /tmp/*
+    chown -R privoxy:privoxy /etc/privoxy /var/log/privoxy
 
-COPY torproxy.sh /usr/bin/
+# Copy configuration templates
+COPY config/torrc /etc/tor/torrc
+COPY config/privoxy.conf /etc/privoxy/config
+
+# Copy entrypoint script
+COPY torproxy.sh /usr/bin/torproxy.sh
+
+RUN chmod +x /usr/bin/torproxy.sh && \
+    chown tor:tor /etc/tor/torrc && \
+    chown privoxy:privoxy /etc/privoxy/config
 
 EXPOSE 8118 9050 9051
 
-HEALTHCHECK --interval=60s --timeout=15s --start-period=20s \
-            CMD curl -sx localhost:8118 'https://check.torproject.org/' | \
-            grep -qm1 Congratulations
+# Local, privacy-preserving healthcheck verifying Privoxy HTTP & Tor SOCKS listeners
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+    CMD curl -sf http://127.0.0.1:8118/ >/dev/null && nc -z 127.0.0.1 9050 || exit 1
 
-VOLUME ["/etc/tor", "/var/lib/tor"]
+VOLUME ["/var/lib/tor"]
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/bin/torproxy.sh"]

@@ -1,135 +1,192 @@
-[![logo](https://raw.githubusercontent.com/dperson/torproxy/master/logo.png)](https://torproject.org/)
+# Tor and Privoxy Proxy Container
 
-# Tor and Privoxy
+[![Build Status](https://github.com/ays7/torproxy/actions/workflows/image.yaml/badge.svg)](https://github.com/ays7/torproxy/actions/workflows/image.yaml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Container Registry](https://img.shields.io/badge/ghcr.io-ays7%2Ftorproxy-blue?logo=github)](https://ghcr.io/ays7/torproxy)
 
-Tor and Privoxy (web proxy configured to route through tor) docker container
+A modernized, lightweight Docker container running **Tor** (SOCKS5 and DNS proxy) and **Privoxy** (HTTP/HTTPS proxy routing into Tor).
 
-# What is Tor?
-
-Tor is free software and an open network that helps you defend against traffic
-analysis, a form of network surveillance that threatens personal freedom and
-privacy, confidential business activities and relationships, and state security.
-
-# What is Privoxy?
-
-Privoxy is a non-caching web proxy with advanced filtering capabilities for
-enhancing privacy, modifying web page data and HTTP headers, controlling access,
-and removing ads and other obnoxious Internet junk.
+> [!NOTE]
+> This repository is a modernized and actively maintained fork by **[ays7](https://github.com/ays7/torproxy)**, originally created by [David Personette (dperson)](https://github.com/dperson/torproxy).
 
 ---
 
-# How to use this image
+## Key Features & Modernizations
 
-**NOTE 1**: this image is setup by default to be a relay only (not an exit node)
-
-**NOTE 2**: this image now supports relaying all traffic through the container,
-see: [tor-route-all-traffic.sh](https://github.com/dperson/torproxy/blob/master/tor-route-all-traffic.sh).
-For it to work, you must set `--net=host` when launching the container.
-
-## Exposing the port
-
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -d dperson/torproxy
-
-**NOTE**: it will take a while for tor to bootstrap...
-
-Then you can hit privoxy web proxy at `http://host-ip:8118` with your browser or
-tor via the socks protocol directly at `http://hostname:9050`.
-
-
-## Complex configuration
-
-    sudo docker run -it --rm dperson/torproxy -h
-    Usage: torproxy.sh [-opt] [command]
-    Options (fields in '[]' are optional, '<>' are required):
-        -h          This help
-        -b ""       Configure tor relaying bandwidth in KB/s
-                    possible arg: "[number]" - # of KB/s to allow
-        -e          Allow this to be an exit node for tor traffic
-        -l "<country>" Configure tor to only use exit nodes in specified country
-                    required args: "<country>" (IE, "US" or "DE")
-                    <country> - country traffic should exit in
-        -n          Generate new circuits now
-        -p "<password>" Configure tor HashedControlPassword for control port
-        -s "<port>;<host:port>" Configure tor hidden service
-                    required args: "<port>;<host:port>"
-                    <port> - port for .onion service to listen on
-                    <host:port> - destination for service request
-
-    The 'command' (if provided and valid) will be run instead of torproxy
-
-ENVIRONMENT VARIABLES
-
- * `TORUSER` - If set use named user instead of 'tor' (for example root)
- * `BW` - As above, set a tor relay bandwidth limit in KB, IE `50`
- * `EXITNODE` - As above, allow tor traffic to access the internet from your IP
- * `LOCATION` - As above, configure the country to use for exit node selection
- * `PASSWORD` - As above, configure HashedControlPassword for control port
- * `SERVICE - As above, configure hidden service, IE '80;hostname:80'
- * `TZ` - Configure the zoneinfo timezone, IE `EST5EDT`
- * `USERID` - Set the UID for the app user
- * `GROUPID` - Set the GID for the app user
-
-Other environment variables beginning with `TOR_` will edit the configuration
-file accordingly:
-
- * `TOR_NewCircuitPeriod=400` will translate to `NewCircuitPeriod 400`
-
-## Examples
-
-Any of the commands can be run at creation with `docker run` or later with
-`docker exec -it tor torproxy.sh` (as of version 1.3 of docker).
-
-### Setting the Timezone
-
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -e TZ=EST5EDT \
-                -d dperson/torproxy
-
-### Start torproxy setting the allowed bandwidth:
-
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -d dperson/torproxy -b 100
-
-OR
-
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -e BW=100 -d dperson/torproxy
-
-### Start torproxy configuring it to be an exit node:
-
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -d dperson/torproxy -e
-
-OR
-
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -e EXITNODE=1 \
-                -d dperson/torproxy
-
-## Test the proxy:
-
-    curl -Lx http://<ipv4_address>:8118 http://jsonip.com/
+* **Alpine 3.21 Base**: Minimal footprint, security updates, and modern OpenSSL 3.x stack.
+* **Tor 0.4.8+ LTS**: Native support for modern Tor features, congestion control, and v3 Onion services.
+* **Dual-Process Supervision**: Privoxy and Tor run under a native process supervisor with graceful signal handling (`SIGTERM`/`SIGINT`) and fail-fast crash monitoring via `wait -n`.
+* **Local, Privacy-Preserving Healthcheck**: Periodically verifies local listeners (HTTP `8118` and SOCKS5 `9050`) rather than leaking exit traffic or hitting third-party websites.
+* **Hardened Security**:
+  * Safe argument and hidden service parsing (eliminated shell `eval` injection risks).
+  * Specification-compliant Tor Control cookie authentication using 64-character hexadecimal encoding.
+  * Direct data directory permission enforcement (`0700` on `/var/lib/tor`).
+* **Multi-Architecture**: Built natively for `linux/amd64` and `linux/arm64` via Docker Buildx and GitHub Container Registry (`ghcr.io/ays7/torproxy`).
 
 ---
 
-If you wish to adapt the default configuration, use something like the following
-to copy it from a running container:
+## Exposed Ports
 
-    sudo docker cp torproxy:/etc/tor/torrc /some/torrc
+| Port | Protocol | Service | Description |
+| :--- | :--- | :--- | :--- |
+| `8118` | TCP | Privoxy HTTP | HTTP/HTTPS web proxy that routes all non-local traffic through Tor |
+| `9050` | TCP | Tor SOCKS5 | SOCKS5 proxy (`IsolateDestAddr` enabled for stream isolation) |
+| `9051` | TCP | Tor Control | Tor control port (accessible with password or cookie auth) |
 
-Then mount it to a new container like:
+---
 
-    sudo docker run -it -p 8118:8118 -p 9050:9050 \
-                -v /some/torrc:/etc/tor/torrc:ro -d dperson/torproxy
+## Quick Start
 
-# User Feedback
+### Running with Docker CLI
 
-## Issues
+```bash
+docker run -d \
+  --name torproxy \
+  -p 8118:8118 \
+  -p 9050:9050 \
+  --restart unless-stopped \
+  ghcr.io/ays7/torproxy:latest
+```
 
-### tor failures (exits or won't connect)
+### Testing the Proxy
 
-If you are affected by this issue (a small percentage of users are) please try
-setting the TORUSER environment variable to root, IE:
+**Test Privoxy (HTTP Proxy):**
+```bash
+curl -x http://localhost:8118 https://check.torproject.org/api/ip
+```
 
-    sudo docker run -it -p 8118:8118 -p 9050:9050 -e TORUSER=root -d \
-                dperson/torproxy
+**Test Tor (SOCKS5 Proxy):**
+```bash
+curl --socks5-hostname localhost:9050 https://check.torproject.org/api/ip
+```
 
-### Reporting
+Both commands should return:
+```json
+{"IsTor":true,"IP":"..."}
+```
 
-If you have any problems with or questions about this image, please contact me
-through a [GitHub issue](https://github.com/dperson/torproxy/issues).
+---
+
+## Docker Compose Example
+
+```yaml
+services:
+  torproxy:
+    image: ghcr.io/ays7/torproxy:latest
+    container_name: torproxy
+    restart: unless-stopped
+    ports:
+      - "8118:8118"
+      - "9050:9050"
+    environment:
+      - LOCATION=CH          # Exit in Switzerland (optional)
+      - PASSWORD=mysecret    # Enable Tor control port password (optional)
+    volumes:
+      - tor-data:/var/lib/tor
+
+volumes:
+  tor-data:
+```
+
+---
+
+## Configuration
+
+### Command-Line Options
+
+You can pass CLI arguments to `torproxy.sh` directly via `docker run`:
+
+```bash
+docker run -it --rm ghcr.io/ays7/torproxy:latest -h
+```
+
+| Flag | Argument | Description |
+| :--- | :--- | :--- |
+| `-h` | None | Display usage and help text |
+| `-b` | `<kbs>` | Configure Tor relay bandwidth limit in KB/s (burst set to 2x) |
+| `-e` | None | Allow exit node traffic (clears `ExitPolicy reject *:*`) |
+| `-l` | `<country>` | Restrict Tor exit traffic to specified 2-letter country code (e.g. `US`, `DE`, `CH`) |
+| `-n` | None | Request new circuits (`SIGNAL NEWNYM`) via Tor control port and exit |
+| `-p` | `<password>` | Set Tor `HashedControlPassword` and expose control port on `0.0.0.0:9051` |
+| `-s` | `<port>;<target:port>` | Configure a Tor hidden service (v3 onion service) |
+
+### Environment Variables
+
+| Variable | Example | Description |
+| :--- | :--- | :--- |
+| `BW` | `100` | Tor relay bandwidth limit in KB/s |
+| `EXITNODE` | `1` or `true` | Allow exit node traffic |
+| `LOCATION` | `DE` | Force Tor exit nodes in the specified ISO country code |
+| `PASSWORD` | `secret123` | Sets `HashedControlPassword` and binds control port to `0.0.0.0:9051` |
+| `SERVICE` | `80;web:80` | Forward onion service traffic. Multiple mappings can be comma-separated |
+| `TORUSER` | `tor` | Run Tor process as the specified username (default: `tor`) |
+| `USERID` | `1000` | Map UID for the `tor` user inside the container |
+| `GROUPID` | `1000` | Map GID for the `tor` group inside the container |
+| `TZ` | `UTC` | Set the system timezone (e.g. `America/New_York`) |
+| `TOR_<Option>` | `TOR_NewCircuitPeriod=400` | Directly inject or override any directive in `torrc` |
+
+---
+
+## Common Use Cases
+
+### 1. Requesting a New Circuit (New Identity)
+To request new Tor circuits without restarting the container:
+```bash
+docker exec torproxy torproxy.sh -n
+```
+
+### 2. Restricting Exit Nodes by Country
+To force exit traffic through specific countries (e.g., Switzerland or Iceland):
+```bash
+docker run -d \
+  -p 8118:8118 -p 9050:9050 \
+  -e LOCATION=CH \
+  ghcr.io/ays7/torproxy:latest
+```
+
+### 3. Exposing a V3 Onion Service
+To route `.onion` requests to an internal web service:
+```bash
+docker run -d \
+  -p 8118:8118 -p 9050:9050 \
+  -e SERVICE="80;web-container:8080" \
+  -v tor-data:/var/lib/tor \
+  ghcr.io/ays7/torproxy:latest
+```
+On startup, the container automatically generates the ed25519 key and displays your hostname in the logs:
+```
+==================================================
+Tor Hidden Service Hostname: <random56chars>.onion
+==================================================
+```
+
+### 4. Custom Configuration Files
+If you need custom configurations, you can bind-mount your own config files:
+```bash
+docker run -d \
+  -p 8118:8118 -p 9050:9050 \
+  -v /path/to/custom-torrc:/etc/tor/torrc:ro \
+  -v /path/to/custom-privoxy.conf:/etc/privoxy/config:ro \
+  ghcr.io/ays7/torproxy:latest
+```
+
+---
+
+## Building Locally
+
+```bash
+git clone https://github.com/ays7/torproxy.git
+cd torproxy
+docker build -t torproxy:local .
+```
+
+To build for multiple architectures:
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t torproxy:local .
+```
+
+---
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [LICENSE](LICENSE) for details.
