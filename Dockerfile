@@ -39,7 +39,7 @@ EXPOSE 8118 9050 9051
 
 # Local, privacy-preserving healthcheck verifying Privoxy HTTP & Tor SOCKS listeners
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
-    CMD curl -sf http://127.0.0.1:8118/ >/dev/null && nc -z 127.0.0.1 9050 || exit 1
+    CMD curl -sf -x http://127.0.0.1:8118 http://p.p/ >/dev/null && nc -z 127.0.0.1 9050 || exit 1
 
 VOLUME ["/var/lib/tor"]
 
