@@ -3,9 +3,17 @@ name: Build torproxy Image
 on:
   push:
     branches: [ moe ]
+    tags:
+      - 'v*.*.*'
+      - 'v*'
   pull_request:
     branches: [ moe ]
   workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: 'Manual Docker tag to publish (e.g. 1.0.0)'
+        required: false
+        type: string
   schedule:
     # Rebuild monthly on the 12th at 10:00 UTC to track Alpine & Tor security updates
     - cron: '0 10 12 * *'
@@ -37,7 +45,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/moe' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/moe' || startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.custom_tag }},enable=${{ inputs.custom_tag != '' }}
             type=sha,prefix=sha-
             type=ref,event=pr
 
