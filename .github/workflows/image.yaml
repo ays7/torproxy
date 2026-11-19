@@ -14,9 +14,6 @@ on:
         description: 'Manual Docker tag to publish (e.g. 1.0.0)'
         required: false
         type: string
-  schedule:
-    # Rebuild monthly on the 12th at 10:00 UTC to track Alpine & Tor security updates
-    - cron: '0 10 12 * *'
 
 env:
   REGISTRY: ghcr.io
